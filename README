@@ -46,7 +46,7 @@ Here's an example of a call:
   sdb_conn = AsyncSDBConnection(aws_access_key_id, aws_access_key_secret)
   def callback(ret):
       print "create_domain returned:", ret
-  sdb_conn.call_async(lambda : sdb_conn.create_domain("mytest"), callback=callback1)
+  sdb_conn.call_async(lambda : sdb_conn.create_domain("mytest"), callback=callback)
 
 Of course you'd need to start the Tornado IOLoop to actually see it run:
 

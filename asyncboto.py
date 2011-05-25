@@ -10,6 +10,10 @@ I've only tested with SimpleDB so far (and then only a little bit)
 but you should be able to do the same with all the other types of
 connection in Boto.
 
+THIS IS RATHER EARLY RIGHT NOW, IT'S NOT PROPERLY TESTED AND IT MAY
+JUST BE A STUPID IDEA ALTOGETHER. I JUST WANT TO GET SOME FEEDBACK.
+DON'T BE STUPID AND USE THIS FOR SOMETHING IMPORTANT. THANKS :)
+
 """
 import boto.sdb.connection
 import tornado.httpclient
@@ -59,11 +63,12 @@ class AsyncHttpConnection(object):
     the cache and thus the call will complete without raising an
     AsyncCallInprogress.
     """
-    def __init__(self, aws_connection, fn, callback):
+    def __init__(self, aws_connection, fn, callback, errback):
         self.aws_connection = aws_connection
 
         self.fn = fn
         self.callback = callback
+        self.errback = errback
         
         self.host = None
         self.is_secure = None
@@ -110,7 +115,7 @@ class AsyncHttpConnection(object):
         self.response_cache[request_sig] = response
         #self.aws_connection._async_http_connection = self
         #retry the call, with the response in place this time
-        self.aws_connection._call_async(self.fn, callback=self.callback, async_http_connection=self)
+        self.aws_connection._call_async(self.fn, callback=self.callback, errback=self.errback, async_http_connection=self)
         
     def getresponse(self):
         """
@@ -150,19 +155,23 @@ class AsyncConnectionMixin(object):
 
     call_async sets up AsyncHttpConnection with the callback and also
     traps the AsyncCallInProgress exception.
+
+    Exceptions are trapped and send to the "errback" callback.
     """
-    def call_async(self, fn, callback):
-        return self._call_async(fn, callback)
+    def call_async(self, fn, callback, errback=lambda e : None):
+        return self._call_async(fn, callback, errback)
         
-    def _call_async(self, fn, callback,async_http_connection=None):
+    def _call_async(self, fn, callback, errback, async_http_connection=None):
         self._async_http_connection = async_http_connection
         try:
             if not self._async_http_connection:
-                self._async_http_connection = AsyncHttpConnection(self, fn, callback)
+                self._async_http_connection = AsyncHttpConnection(self, fn, callback,errback)
             try:
                 ret = fn()
             except AsyncCallInprogress:
                 pass
+            except Exception, e:
+                tornado.ioloop.IOLoop.instance().add_callback(lambda : errback(e))
             else:
                 # When a call finally succeeds without raising
                 # AsyncCallInprogress we then need to pass control to the
@@ -214,5 +223,12 @@ if __name__ == "__main__":
         sdb_conn.call_async(lambda : sdb_conn.get_domain("mytest").get_attributes("boom"), callback=callback2)
         
     sdb_conn.call_async(lambda : sdb_conn.create_domain("mytest").put_attributes("boom", {"hello": "goodbye"}), callback=callback1)
+
+    # Test errback
+    def callback3(ret):
+        assert False, "We were expecting an error!"
+    def errback3(exception):
+        print "Exception received: ", exception
+    sdb_conn.call_async(lambda : sdb_conn.get_domain("i_do_not_exist"), callback=callback3, errback=errback3)
 
     tornado.ioloop.IOLoop.instance().start()
