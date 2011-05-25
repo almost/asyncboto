@@ -1,0 +1,67 @@
+AsyncBoto
+
+Thomas Parslow 2011
+tom@almostobsolete.net
+
+Make Boto operate in an Asynchronous way using Tornado.
+
+I've only tested with SimpleDB so far (and then only a little bit)
+but you should be able to do the same with all the other types of
+connection in Boto.
+
+THIS IS RATHER EARLY RIGHT NOW, IT'S NOT PROPERLY TESTED AND IT MAY
+JUST BE A STUPID IDEA ALTOGETHER. I JUST WANT TO GET SOME FEEDBACK.
+DON'T BE STUPID AND USE THIS FOR SOMETHING IMPORTANT. THANKS :)
+
+How to use it
+=============
+
+Create an asynchronous version of a Boto connection object my adding
+in the mixin. For example, to make an asynchronous version of the
+SimpleDB connection you would do this:
+
+ import boto.sdb.connection
+ import asyncboto
+ class AsyncSDBConnection(boto.sdb.connection.SDBConnection,asyncboto.AsyncConnectionMixin):
+   pass
+
+The connection will act just like a normal version of the connection
+except it now has a new method you can call. The async_call method
+takes a function containing the stuff you want to do and a callback.
+It returns immediately (ish), the result will be sent back to you
+later via the callback.
+
+The "do stuff" function can make calls on the connection and the
+objects it returns as normal. 
+
+WARNING: The function you pass in will be called multiple times as
+part of the way this works, so don't do anything with side effects in
+their! In fact, you're best of just confining yourself to Boto calls
+within that function, save the rest for the callback.
+
+Here's an example of a call:
+
+  sdb_conn = AsyncSDBConnection(aws_access_key_id, aws_access_key_secret)
+  def callback(ret):
+      print "create_domain returned:", ret
+  sdb_conn.call_async(lambda : sdb_conn.create_domain("mytest"), callback=callback1)
+
+Of course you'd need to start the Tornado IOLoop to actually see it run:
+
+  tornado.ioloop.IOLoop.instance().start()
+
+Known Problems
+==============
+
+Request retries won't work. In fact time the same HTTP request is made
+in a loop it won't work.
+
+Performance, a lot of the code in a Boto call will get executed
+multiple times. I have no idea how much of an effect this actually has
+on performance right now.
+
+
+
+
+That's it for now. This is really early (I only just wrote this) but
+I'm interested in what people think about the approach.
