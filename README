@@ -2,6 +2,8 @@ AsyncBoto
 
 Thomas Parslow 2011
 tom@almostobsolete.net
+http://almostobsolete.net/
+twitter: @almostobsolete
 
 Make Boto operate in an Asynchronous way using Tornado.
 
@@ -64,4 +66,6 @@ on performance right now.
 
 
 That's it for now. This is really early (I only just wrote this) but
-I'm interested in what people think about the approach.
+I'm interested in what people think about the approach. Please do get
+in touch with any comments, suggestions or whatever. I'm on Twitter as
+@almostobsolete or my email is tom@almostobsolete.net
