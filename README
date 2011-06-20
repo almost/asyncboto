@@ -11,20 +11,25 @@ I've only tested with SimpleDB so far (and then only a little bit)
 but you should be able to do the same with all the other types of
 connection in Boto.
 
-THIS IS RATHER EARLY RIGHT NOW, IT'S NOT PROPERLY TESTED AND IT MAY
-JUST BE A STUPID IDEA ALTOGETHER. I JUST WANT TO GET SOME FEEDBACK.
+****THIS REALLY ISN'T SUITABLE FOR PRODUCTION****
+
 DON'T BE STUPID AND USE THIS FOR SOMETHING IMPORTANT. THANKS :)
+
+Please check out Josh Haas's version using Python Greenlets:
+
+http://blog.joshhaas.com/2011/06/marrying-boto-to-tornado-greenlets-bring-them-together/
 
 How to use it
 =============
 
 Create an asynchronous version of a Boto connection object my adding
-in the mixin. For example, to make an asynchronous version of the
-SimpleDB connection you would do this:
+in the mixin, which needs to be supplied as the first base class so
+that it overrides the methods in the second. For example, to make an
+asynchronous version of the SimpleDB connection you would do this:
 
  import boto.sdb.connection
  import asyncboto
- class AsyncSDBConnection(boto.sdb.connection.SDBConnection,asyncboto.AsyncConnectionMixin):
+ class AsyncSDBConnection(asyncboto.AsyncConnectionMixin, boto.sdb.connection.SDBConnection):
    pass
 
 The connection will act just like a normal version of the connection
