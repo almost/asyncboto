@@ -16,6 +16,7 @@ DON'T BE STUPID AND USE THIS FOR SOMETHING IMPORTANT. THANKS :)
 
 """
 import boto.sdb.connection
+import boto.s3.connection
 import tornado.httpclient
 import tornado.ioloop
 import urlparse
@@ -85,14 +86,19 @@ class AsyncHttpConnection(object):
         The request sig is based on the current values of the member
         variables. 
         """
-        path_minus_query,query = self.path.split("?",1)
+        s = self.path.split("?",1)
+        path_minus_query = s[0]
+        query = s[1] if len(s) > 1 else ""
         query = [(k,tuple(v)) for k,v in urlparse.parse_qs(query).items() if k not in ["Timestamp","Signature"]]
         query.sort()
+        headers = [(k,tuple(v)) for k,v in self.headers.items() if k not in ["Date", "Authorization"]]
+        headers.sort()
+        
         # Hash this so that large body's aren't kept around when not
         # needed
         return hashlib.md5(repr((self.is_secure, self.host, self.method,
                             path_minus_query, tuple(query), self.data,
-                            tuple(sorted(self.headers.items()))))).hexdigest()
+                            tuple(headers)))).hexdigest()
         
     def request(self, method, path, data, headers):
         """
@@ -158,7 +164,7 @@ class AsyncConnectionMixin(object):
 
     Exceptions are trapped and send to the "errback" callback.
     """
-    def call_async(self, fn, callback, errback=lambda e : None):
+    def call_async(self, fn, callback=lambda x : None, errback=None):
         return self._call_async(fn, callback, errback)
         
     def _call_async(self, fn, callback, errback, async_http_connection=None):
@@ -171,7 +177,10 @@ class AsyncConnectionMixin(object):
             except AsyncCallInprogress:
                 pass
             except Exception, e:
-                tornado.ioloop.IOLoop.instance().add_callback(lambda : errback(e))
+                if errback is None:
+                    raise
+                else:
+                    tornado.ioloop.IOLoop.instance().add_callback(lambda : errback(e))
             else:
                 # When a call finally succeeds without raising
                 # AsyncCallInprogress we then need to pass control to the
@@ -197,19 +206,28 @@ class AsyncConnectionMixin(object):
         else:
             # This hasn't been called from within an async_call so
             # just allow it to do a normal synchronous call
-            super(AsyncConnectionMixin, self).get_http_connection(host,is_secure)
+            return super(AsyncConnectionMixin, self).get_http_connection(host,is_secure)
 
     def put_http_connection(self, *args, **kwargs):
         if not hasattr(self, "_async_http_connection"):
             super(AsyncConnectionMixin, self).put_http_connection(*args, **kwargs)
-        
+
+# I'm defining some connections here but you shoudl be able to use
+# this with any boto connection object. It's just that I haven't
+# tested the ones not here at all (as opposed to the literally
+# *minutes* of testing that I have given these ones)
             
-class AsyncSDBConnection(boto.sdb.connection.SDBConnection,AsyncConnectionMixin):
+class AsyncSDBConnection(AsyncConnectionMixin, boto.sdb.connection.SDBConnection):
+    pass
+
+class AsyncS3Connection(AsyncConnectionMixin, boto.s3.connection.S3Connection):
     pass
 
 
 if __name__ == "__main__":
     from tornado.options import define, options
+    import random
+    
     define("aws_access_key_id", type=str)
     define("aws_access_key_secret", type=str)
     tornado.options.parse_command_line()
@@ -217,7 +235,6 @@ if __name__ == "__main__":
     sdb_conn = AsyncSDBConnection(options.aws_access_key_id, options.aws_access_key_secret)
     def callback2(ret):
         print "Return from get was: ", ret
-        tornado.ioloop.IOLoop.instance().stop()
     def callback1(ret):
         print "Return from put was:", ret
         sdb_conn.call_async(lambda : sdb_conn.get_domain("mytest").get_attributes("boom"), callback=callback2)
@@ -231,4 +248,25 @@ if __name__ == "__main__":
         print "Exception received: ", exception
     sdb_conn.call_async(lambda : sdb_conn.get_domain("i_do_not_exist"), callback=callback3, errback=errback3)
 
+    s3_conn = AsyncS3Connection(options.aws_access_key_id, options.aws_access_key_secret)
+    bucket_name = "test_bucket." + str(random.random())
+
+
+    
+    def s3callback1(bucket):
+        print "The Bucket:", bucket
+        def s3callback2(key):
+            print "The Key:", key
+            def s3callback3(_ignore):
+                def s3callback4(contents):
+                    print "Contents:", contents
+                    # clean up by deleting the bucket
+                    s3_conn.call_async(lambda : key.delete(), lambda _ : s3_conn.call_async(lambda :bucket.delete()))
+                s3_conn.call_async(lambda : key.get_contents_as_string(), callback=s3callback4)
+            s3_conn.call_async(lambda : key.set_contents_from_string("hello!"), callback=s3callback3)
+        s3_conn.call_async(lambda : bucket.new_key("hello"), callback=s3callback2)
+                                   
+    s3_conn.call_async(lambda : s3_conn.create_bucket(bucket_name), callback=s3callback1)
+
+    print "Start loop"
     tornado.ioloop.IOLoop.instance().start()
